@@ -1,6 +1,6 @@
 [build]
   # Build command
-  command = "npm run build"
+  command = "npm run build:netlify"
   
   # Directory to publish (contains the built frontend)
   publish = "dist/public"
@@ -23,7 +23,6 @@
   from = "/*"
   to = "/index.html"
   status = 200
-  conditions = {Role = ["admin"], Country = ["US"]}
 
 # Handle subdomain routing for organizations
 [[redirects]]

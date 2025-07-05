@@ -1,8 +1,26 @@
 // Netlify Function to handle all API routes
-import serverlessExpress from '@vendia/serverless-express';
-import app from '../../server/index.js';
+const serverlessExpress = require('@vendia/serverless-express');
 
-// Create serverless handler
-const handler = serverlessExpress({ app });
+// For Netlify Functions, we need to use CommonJS
+const createHandler = async () => {
+  try {
+    // Import the built server
+    const { default: app } = await import('../../dist/index.js');
+    return serverlessExpress({ app });
+  } catch (error) {
+    console.error('Failed to import server app:', error);
+    // Return a basic error handler
+    return (event, context) => {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Server initialization failed' })
+      };
+    };
+  }
+};
 
-export { handler };
+// Export the handler
+exports.handler = async (event, context) => {
+  const handler = await createHandler();
+  return handler(event, context);
+};
