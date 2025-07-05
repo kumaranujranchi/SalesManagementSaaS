@@ -1,0 +1,42 @@
+New Feature Requirement for Admin and User Panels
+
+We need to implement the following features in the Admin Panel, with certain updates also visible on the User Panel (sales team dashboard):
+
+Target vs Achievement Page:
+A dedicated page is required in the Admin Panel to view each sales executive’s monthly target versus actual achievement. This page will help determine if a user is ahead of their target or falling behind.
+
+Target Calculation Logic:
+
+We need to define the monthly target for each sales executive and record their date of joining.
+
+If a user joined before January 2025, their target will be calculated from January 2025 to the current month.
+
+For example, if the monthly target is 1500 sq. ft., then for January to May, the cumulative target would be 7500 sq. ft., and the achievements will be compared accordingly to calculate if the user is in positive or negative balance.
+
+Target Assignment During User Creation:
+While adding a new user, we will also input the joining date and monthly target. This information will be used to generate their target-achievement data.
+
+Achievement Data Source:
+Achievements will be fetched from the sales entries added in the system. These values will be used dynamically to populate relevant data.
+
+Adding Targets to Existing Users:
+For existing sales executives, an option should be available to assign monthly targets so they can be included in this system after the update.
+
+Date of Joining-Based Monthly Allocation:
+The joining date must be recorded for every user.
+If someone joins mid-month, their target for that month should be prorated based on the number of days remaining.
+
+For example: If the monthly target is 1500 sq. ft. and the user joined on the 20th of a 30-day month, then the target for that month should be proportionally set for 10 days.
+
+Individual Target Pages:
+Each user will have a dedicated page visible in the Admin Panel showing their specific target vs achievement.
+
+User Panel Update:
+Each user will also be able to view their own target vs achievement details in their panel.
+
+Note:
+
+This update must not interfere with any current functionality.
+
+All existing data must remain intact—no data loss should occur during or after the implementation.
+
