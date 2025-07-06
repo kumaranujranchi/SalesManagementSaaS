@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { organizationRegistrationSchema, OrganizationRegistration } from '@shared/schema';
 import { TenantUtils } from '@shared/tenant-utils';
+import { api } from '../utils/api';
 
 export default function SuperAdminDashboard() {
   const [isLoading, setIsLoading] = useState(false);
@@ -35,9 +36,7 @@ export default function SuperAdminDashboard() {
   // Load organizations
   const loadOrganizations = async () => {
     try {
-      const response = await fetch('/api/organizations', {
-        credentials: 'include',
-      });
+      const response = await api.get('/organizations');
 
       if (response.ok) {
         const data = await response.json();
@@ -58,19 +57,11 @@ export default function SuperAdminDashboard() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/organizations/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
+      const response = await api.post('/organizations/register', data);
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to create organization');
+        throw new Error(result.error || result.message || 'Failed to create organization');
       }
 
       setSuccess(`Organization "${data.companyName}" created successfully!`);
@@ -86,10 +77,7 @@ export default function SuperAdminDashboard() {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await api.post('/auth/logout');
       window.location.href = '/super-admin/login';
     } catch (error) {
       console.error('Logout error:', error);
@@ -372,6 +360,9 @@ export default function SuperAdminDashboard() {
                             <div>
                               <div className="text-sm text-gray-900">{org.email}</div>
                               <div className="text-sm text-gray-500">{org.phone}</div>
+                              <div className="text-xs text-blue-600 mt-1">
+                                Admin: {org.email} (any password)
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -390,17 +381,26 @@ export default function SuperAdminDashboard() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <a
-                              href={`https://${org.slug}.yourdomain.com`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900 mr-4"
-                            >
-                              Visit
-                            </a>
-                            <button className="text-gray-600 hover:text-gray-900">
-                              Edit
-                            </button>
+                            <div className="flex flex-col space-y-1">
+                              <a
+                                href="/org-admin/login"
+                                className="text-blue-600 hover:text-blue-900"
+                                title={`Login as admin for ${org.name}`}
+                              >
+                                Admin Login
+                              </a>
+                              <a
+                                href={`https://${org.slug}.yourdomain.com`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-600 hover:text-green-900"
+                              >
+                                Visit Site
+                              </a>
+                              <button className="text-gray-600 hover:text-gray-900 text-left">
+                                Edit
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

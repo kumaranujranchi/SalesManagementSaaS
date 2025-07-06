@@ -9,6 +9,7 @@ import AcceptInvitation from './pages/AcceptInvitation';
 import Dashboard from './pages/Dashboard';
 import SuperAdminLogin from './pages/SuperAdminLogin';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import OrgAdminLogin from './pages/OrgAdminLogin';
 import LandingPage from './pages/LandingPage';
 import './index.css';
 
@@ -38,6 +39,7 @@ function App() {
         <Router>
           <Switch>
             <Route path="/login" component={Login} />
+            <Route path="/org-admin/login" component={OrgAdminLogin} />
             <Route path="/register" component={RegisterOrganization} />
             <Route path="/accept-invitation" component={AcceptInvitation} />
             <Route path="/super-admin/login" component={SuperAdminLogin} />

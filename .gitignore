@@ -143,3 +143,6 @@ uploads/
 # Backup files
 *.backup
 *.bak
+
+# Local Netlify folder
+.netlify

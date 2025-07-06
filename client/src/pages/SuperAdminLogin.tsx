@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { superAdminLoginSchema, SuperAdminLoginData } from '@shared/schema';
+import { api } from '../utils/api';
 
 export default function SuperAdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,24 +21,20 @@ export default function SuperAdminLogin() {
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/super-admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
+      const response = await api.post('/auth/super-admin/login', data);
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Login failed');
+        throw new Error(result.error || result.message || 'Login failed');
       }
+
+      // Store admin info if needed
+      console.log('Super admin login successful:', result);
 
       // Redirect to super admin dashboard
       window.location.href = '/super-admin/dashboard';
     } catch (err) {
+      console.error('Super admin login error:', err);
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);
