@@ -1,13 +1,22 @@
 // Netlify Function to handle all API routes
-const serverlessExpress = require("@vendia/serverless-express");
+// Using dynamic imports to handle ES modules properly
 
-// Create handler function
 const createHandler = async () => {
   try {
-    // Import the built server app
-    const { default: app } = await import("../../dist/index.js");
-    console.log("Successfully imported app:", !!app);
-    return serverlessExpress({ app });
+    // Dynamic imports for ES modules
+    const serverlessExpress = await import("@vendia/serverless-express");
+    const appModule = await import("../../dist/index.js");
+
+    console.log("Successfully imported modules");
+    console.log("App module:", !!appModule);
+    console.log("App default:", !!appModule.default);
+
+    const app = appModule.default;
+    if (!app) {
+      throw new Error("No default export found in app module");
+    }
+
+    return serverlessExpress.default({ app });
   } catch (error) {
     console.error("Failed to import server app:", error);
     console.error("Error details:", error.message);
