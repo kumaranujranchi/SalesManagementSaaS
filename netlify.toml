@@ -24,12 +24,12 @@
   to = "/index.html"
   status = 200
 
-# Handle subdomain routing for organizations
-[[redirects]]
-  from = "https://:subdomain.yourdomain.com/*"
-  to = "https://yourdomain.com/:splat?org=:subdomain"
-  status = 200
-  force = true
+# Handle subdomain routing for organizations (update yourdomain.com to your actual domain)
+# [[redirects]]
+#   from = "https://:subdomain.yourdomain.com/*"
+#   to = "https://yourdomain.com/:splat?org=:subdomain"
+#   status = 200
+#   force = true
 
 # Security headers
 [[headers]]
