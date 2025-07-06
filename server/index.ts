@@ -16,11 +16,15 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Database connection for sessions
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
+// Support both DATABASE_URL and NETLIFY_DATABASE_URL
+const databaseUrl = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL or NETLIFY_DATABASE_URL environment variable is required');
 }
 
-const sql = neon(process.env.DATABASE_URL);
+console.log('Database URL found:', !!databaseUrl);
+const sql = neon(databaseUrl);
 const PgSession = ConnectPgSimple(session);
 
 // Middleware
@@ -33,7 +37,7 @@ app.set('trust proxy', 1);
 // Session configuration
 app.use(session({
   store: new PgSession({
-    conString: process.env.DATABASE_URL,
+    conString: databaseUrl,
     tableName: 'session',
     createTableIfMissing: true,
   }),
@@ -66,10 +70,12 @@ if (process.env.NODE_ENV === 'development') {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: !!databaseUrl,
+    databaseSource: process.env.DATABASE_URL ? 'DATABASE_URL' : 'NETLIFY_DATABASE_URL'
   });
 });
 
@@ -118,8 +124,9 @@ app.use('/api/*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
-  
+  console.log(`🗄️  Database: ${databaseUrl ? 'Connected' : 'Not configured'}`);
+  console.log(`🔗 Database source: ${process.env.DATABASE_URL ? 'DATABASE_URL' : 'NETLIFY_DATABASE_URL'}`);
+
   if (process.env.NODE_ENV === 'development') {
     console.log(`🌐 Frontend dev server: http://localhost:5173`);
     console.log(`🔗 API base URL: http://localhost:${PORT}/api`);
