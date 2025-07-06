@@ -1,5 +1,5 @@
 // Netlify Function to handle all API routes
-import serverlessExpress from "@vendia/serverless-express";
+const serverlessExpress = require("@vendia/serverless-express");
 
 // Create handler function
 const createHandler = async () => {
@@ -32,7 +32,7 @@ const createHandler = async () => {
 };
 
 // Export the handler
-export const handler = async (event, context) => {
+exports.handler = async (event, context) => {
   console.log("Netlify function called:", event.httpMethod, event.path);
   console.log("Environment check:", {
     NODE_ENV: process.env.NODE_ENV,
