@@ -1,62 +1,115 @@
-// In-memory storage for demo purposes (in production, this would be in a database)
-let organizations = [];
-let organizationAdmins = [];
+const { neon } = require("@neondatabase/serverless");
+const crypto = require("crypto");
+const { promisify } = require("util");
 
-// Initialize with a test organization and admin for demo purposes
-function initializeDemoData() {
-  if (organizations.length === 0) {
-    const testOrg = {
-      id: 1,
-      name: "Demo Company",
-      slug: "demo-company",
-      address: "123 Demo Street",
-      gstNumber: "DEMO123456789",
-      phone: "+1234567890",
-      email: "admin@democompany.com",
-      industry: "Technology",
-      subscriptionPlan: "basic",
-      subscriptionAmount: 999,
-      subscriptionStartDate: "2025-01-01",
-      subscriptionEndDate: "2025-12-31",
-      maxUsers: 10,
-      subscriptionStatus: "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+// Database connection
+const databaseUrl =
+  process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error(
+    "DATABASE_URL or NETLIFY_DATABASE_URL environment variable is required"
+  );
+}
 
-    const testAdmin = {
-      id: 1,
-      organizationId: 1,
-      username: "admin@democompany.com",
-      fullName: "Demo Administrator",
-      email: "admin@democompany.com",
-      phone: "+1234567890",
-      role: "org_admin",
-      status: true,
-      createdAt: new Date().toISOString(),
-      password: "demo_password_hash",
-    };
+const sql = neon(databaseUrl);
+const scryptAsync = promisify(crypto.scrypt);
 
-    organizations.push(testOrg);
-    organizationAdmins.push(testAdmin);
-    console.log("Demo data initialized:", {
-      organizations: organizations.length,
-      admins: organizationAdmins.length,
-    });
+// Password hashing utilities
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derivedKey = await scryptAsync(password, salt, 64);
+  return `${salt}:${derivedKey.toString("hex")}`;
+}
+
+async function verifyPassword(password, hashedPassword) {
+  const [salt, key] = hashedPassword.split(":");
+  const derivedKey = await scryptAsync(password, salt, 64);
+  return key === derivedKey.toString("hex");
+}
+
+// Database initialization
+async function initializeDatabase() {
+  try {
+    // Check if organizations table exists
+    const orgCheck = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'organizations'
+      );
+    `;
+
+    if (!orgCheck[0].exists) {
+      console.log(
+        "Database tables not found. Please run the migration script first."
+      );
+      return false;
+    }
+
+    // Check if demo organization exists
+    const demoOrg = await sql`
+      SELECT * FROM organizations WHERE slug = 'demo-company' LIMIT 1;
+    `;
+
+    if (demoOrg.length === 0) {
+      // Create demo organization
+      const [newOrg] = await sql`
+        INSERT INTO organizations (
+          name, slug, address, gst_number, phone, email, industry,
+          subscription_plan, subscription_status, subscription_amount,
+          max_users, created_at, updated_at
+        ) VALUES (
+          'Demo Company', 'demo-company', '123 Demo Street', 'DEMO123456789',
+          '+1234567890', 'admin@democompany.com', 'Technology',
+          'paid', 'active', 6000, 50, NOW(), NOW()
+        ) RETURNING *;
+      `;
+
+      // Create demo admin user
+      const hashedPassword = await hashPassword("demo123");
+      await sql`
+        INSERT INTO users (
+          organization_id, username, password, full_name, email, phone,
+          role, status, created_at, updated_at
+        ) VALUES (
+          ${newOrg.id}, 'admin@democompany.com', ${hashedPassword},
+          'Demo Administrator', 'admin@democompany.com', '+1234567890',
+          'org_admin', true, NOW(), NOW()
+        );
+      `;
+
+      console.log("Demo organization and admin created successfully");
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Database initialization error:", error);
+    return false;
   }
 }
 
 exports.handler = async (event, context) => {
   try {
-    // Initialize demo data
-    initializeDemoData();
+    // Initialize database
+    const dbInitialized = await initializeDatabase();
+    if (!dbInitialized) {
+      return {
+        statusCode: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({
+          error: "Database not initialized. Please run migrations first.",
+        }),
+      };
+    }
 
     console.log("=== API FUNCTION CALLED ===");
     console.log("Event path:", event.path);
     console.log("Event httpMethod:", event.httpMethod);
     console.log("Event body:", event.body);
-    console.log("Current organizations:", organizations.length);
-    console.log("Current admins:", organizationAdmins.length);
+    console.log("Database URL configured:", !!databaseUrl);
     console.log("=== END DEBUG INFO ===");
 
     // Handle CORS preflight
@@ -245,23 +298,35 @@ exports.handler = async (event, context) => {
     ) {
       try {
         const body = JSON.parse(event.body || "{}");
-        console.log("Organization admin login attempt:", { email: body.email });
-        console.log(
-          "Available admins:",
-          organizationAdmins.map((a) => ({ email: a.email, id: a.id }))
-        );
+        const { email, password } = body;
 
-        // Find the organization admin
-        const admin = organizationAdmins.find(
-          (admin) => admin.email === body.email
-        );
+        console.log("Organization admin login attempt:", { email });
 
-        console.log(
-          "Found admin:",
-          admin ? { id: admin.id, email: admin.email } : "Not found"
-        );
+        if (!email || !password) {
+          return {
+            statusCode: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+              error: "Email and password are required",
+            }),
+          };
+        }
 
-        if (!admin) {
+        // Find user in database
+        const users = await sql`
+          SELECT u.*, o.name as organization_name, o.slug as organization_slug
+          FROM users u
+          JOIN organizations o ON u.organization_id = o.id
+          WHERE u.email = ${email} AND u.role = 'org_admin' AND u.status = true
+          LIMIT 1;
+        `;
+
+        console.log("Found users:", users.length);
+
+        if (users.length === 0) {
           return {
             statusCode: 401,
             headers: {
@@ -270,18 +335,43 @@ exports.handler = async (event, context) => {
             },
             body: JSON.stringify({
               error: "Invalid credentials",
-              hint: "Make sure you've created an organization first. Available test email: admin@democompany.com",
-              availableEmails: organizationAdmins.map((a) => a.email),
+              hint: "Demo credentials: admin@democompany.com / demo123",
             }),
           };
         }
 
-        // For demo purposes, accept any password for organization admins
-        // In production, you would verify the actual password hash
-        const organization = organizations.find(
-          (org) => org.id === admin.organizationId
-        );
+        const user = users[0];
 
+        // Verify password
+        const isValidPassword = await verifyPassword(password, user.password);
+        if (!isValidPassword) {
+          return {
+            statusCode: 401,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+              error: "Invalid credentials",
+            }),
+          };
+        }
+
+        // Update last login
+        await sql`
+          UPDATE users
+          SET last_login = NOW()
+          WHERE id = ${user.id};
+        `;
+
+        // Get organization details
+        const organizations = await sql`
+          SELECT * FROM organizations WHERE id = ${user.organization_id} LIMIT 1;
+        `;
+
+        const organization = organizations[0];
+
+        // Return success response
         return {
           statusCode: 200,
           headers: {
@@ -290,16 +380,24 @@ exports.handler = async (event, context) => {
           },
           body: JSON.stringify({
             admin: {
-              id: admin.id,
-              username: admin.username,
-              fullName: admin.fullName,
-              email: admin.email,
-              role: admin.role,
-              organizationId: admin.organizationId,
-              organization: organization,
+              id: user.id,
+              username: user.username,
+              fullName: user.full_name,
+              email: user.email,
+              role: user.role,
+              status: user.status,
+              organizationId: user.organization_id,
+            },
+            organization: {
+              id: organization.id,
+              name: organization.name,
+              slug: organization.slug,
+              industry: organization.industry,
+              subscriptionPlan: organization.subscription_plan,
+              subscriptionStatus: organization.subscription_status,
             },
             permissions: ["org_admin"],
-            message: "Organization admin login successful!",
+            message: "Login successful!",
           }),
         };
       } catch (error) {
