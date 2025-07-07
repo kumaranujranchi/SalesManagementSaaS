@@ -5,13 +5,15 @@ const { promisify } = require("util");
 // Database connection
 const databaseUrl =
   process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    "DATABASE_URL or NETLIFY_DATABASE_URL environment variable is required"
-  );
+
+// For demo purposes, allow the function to work without database
+let sql = null;
+if (databaseUrl) {
+  sql = neon(databaseUrl);
+} else {
+  console.warn("No database URL configured. Using demo mode.");
 }
 
-const sql = neon(databaseUrl);
 const scryptAsync = promisify(crypto.scrypt);
 
 // Password hashing utilities
@@ -29,6 +31,11 @@ async function verifyPassword(password, hashedPassword) {
 
 // Database initialization
 async function initializeDatabase() {
+  if (!sql) {
+    console.log("Database not configured, using demo mode");
+    return true; // Allow the app to continue in demo mode
+  }
+
   try {
     // Check if organizations table exists
     const orgCheck = await sql`
@@ -163,16 +170,291 @@ exports.handler = async (event, context) => {
             process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
 
           console.log("Database URL available:", !!databaseUrl);
-          console.log(
-            "Environment variables:",
-            Object.keys(process.env).filter((key) => key.includes("DATABASE"))
-          );
 
           if (!databaseUrl) {
             throw new Error("Database URL not found in environment variables");
           }
 
-          // For now, return a message asking to create the super admin manually
+          // Initialize database connection
+          const setupSql = neon(databaseUrl);
+
+          console.log("Running database migration...");
+
+          // Create organizations table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS organizations (
+              id SERIAL PRIMARY KEY,
+              name TEXT NOT NULL,
+              slug TEXT NOT NULL UNIQUE,
+              domain TEXT,
+              logo TEXT,
+              address TEXT NOT NULL,
+              gst_number TEXT,
+              phone TEXT NOT NULL,
+              email TEXT NOT NULL,
+              website TEXT,
+              industry TEXT,
+              subscription_plan TEXT DEFAULT 'paid',
+              subscription_status TEXT DEFAULT 'active',
+              subscription_amount NUMERIC DEFAULT 6000,
+              subscription_start_date TIMESTAMP,
+              subscription_end_date TIMESTAMP,
+              max_users INTEGER DEFAULT -1,
+              settings TEXT DEFAULT '{}',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create super_admins table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS super_admins (
+              id SERIAL PRIMARY KEY,
+              username TEXT NOT NULL UNIQUE,
+              password TEXT NOT NULL,
+              full_name TEXT NOT NULL,
+              email TEXT NOT NULL UNIQUE,
+              phone TEXT,
+              role TEXT DEFAULT 'super_admin',
+              status BOOLEAN DEFAULT true,
+              last_login TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create users table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS users (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              username TEXT NOT NULL,
+              password TEXT NOT NULL,
+              full_name TEXT NOT NULL,
+              email TEXT NOT NULL,
+              phone TEXT,
+              designation TEXT,
+              department TEXT,
+              reporting_manager TEXT,
+              reporting_manager_id INTEGER,
+              team TEXT,
+              image_url TEXT,
+              role TEXT DEFAULT 'user',
+              permissions TEXT DEFAULT '{}',
+              status BOOLEAN DEFAULT true,
+              employee_id TEXT,
+              joining_date TIMESTAMP,
+              monthly_target DOUBLE PRECISION,
+              invited_by INTEGER REFERENCES users(id),
+              invited_at TIMESTAMP,
+              last_login TIMESTAMP,
+              email_verified BOOLEAN DEFAULT false,
+              email_verification_token TEXT,
+              password_reset_token TEXT,
+              password_reset_expires TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          console.log("Creating demo super admin account...");
+
+          // Insert demo super admin account
+          await setupSql`
+            INSERT INTO super_admins (
+              username, password, full_name, email, role, status, created_at, updated_at
+            ) VALUES (
+              'superadmin',
+              '4b6a04ce8f5b24cd26f1705598315fdaab27ea9116b2783e90bde23adfdd7ce38b63ee5c1aa846b9696fe19c1aeb16842105a34167283c32619386910f40ff23.7a876254766f3786dfdedf62a6414725',
+              'Super Administrator',
+              'admin@salesmanagement.com',
+              'super_admin',
+              true,
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP
+            ) ON CONFLICT (email) DO NOTHING;
+          `;
+
+          console.log("Creating demo organization...");
+
+          // Insert demo organization
+          await setupSql`
+            INSERT INTO organizations (
+              name, slug, address, phone, email, industry, created_at, updated_at
+            ) VALUES (
+              'Demo Company',
+              'demo-company',
+              '123 Demo Street, Demo City',
+              '+1234567890',
+              'admin@democompany.com',
+              'Real Estate',
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP
+            ) ON CONFLICT (slug) DO NOTHING;
+          `;
+
+          // Get the demo organization ID
+          const demoOrg = await setupSql`
+            SELECT id FROM organizations WHERE slug = 'demo-company' LIMIT 1;
+          `;
+
+          if (demoOrg.length > 0) {
+            console.log("Creating demo user account...");
+
+            // Insert demo user account
+            await setupSql`
+              INSERT INTO users (
+                organization_id, username, password, full_name, email, role, status, created_at, updated_at
+              ) VALUES (
+                ${demoOrg[0].id},
+                'admin',
+                '6837c3696551977eed1c9fdb6faa21cda17da0e8d3f9c5101970b5b9312bac5f2113ebbd53312c3f012c6d29833d55e8fb17958efbfb0d41fa114653692f93b6.5c515bb7f9848ce4dc9b4b1fcd6acfda',
+                'Demo Admin',
+                'admin@democompany.com',
+                'org_admin',
+                true,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+              ) ON CONFLICT (email) DO NOTHING;
+            `;
+          }
+
+          console.log("Creating additional tables...");
+
+          // Create projects table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS projects (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              name TEXT NOT NULL,
+              description TEXT,
+              project_type TEXT NOT NULL,
+              image_url TEXT,
+              location TEXT NOT NULL,
+              deadline TIMESTAMP,
+              status TEXT DEFAULT 'running',
+              created_by INTEGER NOT NULL REFERENCES users(id),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create sales table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS sales (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              sales_executive_id INTEGER NOT NULL REFERENCES users(id),
+              project_id INTEGER NOT NULL REFERENCES projects(id),
+              booking_date DATE NOT NULL,
+              booking_done TEXT DEFAULT 'No',
+              booking_data TEXT,
+              agreement_date DATE,
+              customer_name TEXT NOT NULL,
+              customer_phone TEXT NOT NULL,
+              customer_email TEXT,
+              customer_address TEXT,
+              plot_number TEXT,
+              plot_area DOUBLE PRECISION,
+              plot_rate DOUBLE PRECISION,
+              plot_cost DOUBLE PRECISION,
+              booking_amount DOUBLE PRECISION,
+              payment_mode TEXT,
+              payment_details TEXT,
+              notes TEXT,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create targets table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS targets (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              year INTEGER NOT NULL,
+              month INTEGER NOT NULL,
+              target_value DOUBLE PRECISION NOT NULL,
+              achieved DOUBLE PRECISION DEFAULT 0,
+              last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create announcements table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS announcements (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              title TEXT NOT NULL,
+              content TEXT NOT NULL,
+              created_by INTEGER NOT NULL REFERENCES users(id),
+              is_active BOOLEAN DEFAULT true,
+              expires_at TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create leaderboard table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS leaderboard (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              achievement TEXT NOT NULL,
+              score INTEGER DEFAULT 0,
+              period TEXT,
+              year INTEGER,
+              month INTEGER,
+              quarter INTEGER,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create site_visits table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS site_visits (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              sales_executive_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              customer_name TEXT NOT NULL,
+              visit_date DATE NOT NULL,
+              visit_time TEXT NOT NULL,
+              pickup_location TEXT NOT NULL,
+              project_ids TEXT NOT NULL,
+              notes TEXT,
+              status TEXT DEFAULT 'pending',
+              approved_by INTEGER REFERENCES users(id),
+              approved_at TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create organization_invitations table
+          await setupSql`
+            CREATE TABLE IF NOT EXISTS organization_invitations (
+              id SERIAL PRIMARY KEY,
+              organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              email TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'user',
+              invited_by INTEGER NOT NULL REFERENCES users(id),
+              token TEXT NOT NULL UNIQUE,
+              expires_at TIMESTAMP NOT NULL,
+              accepted_at TIMESTAMP,
+              status TEXT DEFAULT 'pending',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `;
+
+          // Create unique indexes
+          await setupSql`
+            CREATE UNIQUE INDEX IF NOT EXISTS targets_user_year_month_idx ON targets (user_id, year, month);
+          `;
+
+          console.log("Database setup completed successfully!");
+
           return {
             statusCode: 200,
             headers: {
@@ -180,14 +462,17 @@ exports.handler = async (event, context) => {
               "Access-Control-Allow-Origin": "*",
             },
             body: JSON.stringify({
-              message:
-                "Please create the super admin account manually in Neon console",
-              instructions:
-                "Run the SQL from setup-demo-accounts.sql in your Neon database",
-              sql: `INSERT INTO super_admins (username, password, full_name, email, role, status, created_at, updated_at) VALUES ('superadmin', '4b6a04ce8f5b24cd26f1705598315fdaab27ea9116b2783e90bde23adfdd7ce38b63ee5c1aa846b9696fe19c1aeb16842105a34167283c32619386910f40ff23.7a876254766f3786dfdedf62a6414725', 'Super Administrator', 'admin@salesmanagement.com', 'super_admin', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (email) DO NOTHING;`,
+              success: true,
+              message: "Database setup completed successfully!",
               credentials: {
-                email: "admin@salesmanagement.com",
-                password: "SuperAdmin123!",
+                superAdmin: {
+                  email: "admin@salesmanagement.com",
+                  password: "SuperAdmin123!",
+                },
+                orgAdmin: {
+                  email: "admin@democompany.com",
+                  password: "Sales123!",
+                },
               },
             }),
           };
@@ -289,11 +574,14 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Handle organization admin login
+    // Handle organization admin login and regular login
     if (
       (event.path === "/auth/org-admin/login" ||
         event.path === "/api/auth/org-admin/login" ||
-        event.path === "/.netlify/functions/api/auth/org-admin/login") &&
+        event.path === "/.netlify/functions/api/auth/org-admin/login" ||
+        event.path === "/auth/login" ||
+        event.path === "/api/auth/login" ||
+        event.path === "/.netlify/functions/api/auth/login") &&
       event.httpMethod === "POST"
     ) {
       try {
@@ -313,6 +601,48 @@ exports.handler = async (event, context) => {
               error: "Email and password are required",
             }),
           };
+        }
+
+        // Demo mode - allow login with demo credentials
+        if (!sql) {
+          if (email === "admin@democompany.com" && password === "demo123") {
+            return {
+              statusCode: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+              body: JSON.stringify({
+                success: true,
+                user: {
+                  id: 1,
+                  email: "admin@democompany.com",
+                  name: "Demo Admin",
+                  role: "org_admin",
+                  organization_name: "Demo Company",
+                  organization_slug: "demo-company",
+                },
+                organization: {
+                  id: 1,
+                  name: "Demo Company",
+                  slug: "demo-company",
+                },
+                token: "demo-token-123",
+              }),
+            };
+          } else {
+            return {
+              statusCode: 401,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+              body: JSON.stringify({
+                error: "Invalid credentials",
+                hint: "Demo credentials: admin@democompany.com / demo123",
+              }),
+            };
+          }
         }
 
         // Find user in database
@@ -379,7 +709,7 @@ exports.handler = async (event, context) => {
             "Access-Control-Allow-Origin": "*",
           },
           body: JSON.stringify({
-            admin: {
+            user: {
               id: user.id,
               username: user.username,
               fullName: user.full_name,
@@ -414,6 +744,73 @@ exports.handler = async (event, context) => {
           }),
         };
       }
+    }
+
+    // Handle auth/me endpoint
+    if (
+      (event.path === "/auth/me" ||
+        event.path === "/api/auth/me" ||
+        event.path === "/.netlify/functions/api/auth/me") &&
+      event.httpMethod === "GET"
+    ) {
+      // For demo mode, return demo user data
+      if (!sql) {
+        return {
+          statusCode: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+          body: JSON.stringify({
+            user: {
+              id: 1,
+              email: "admin@democompany.com",
+              name: "Demo Admin",
+              role: "org_admin",
+              organization_name: "Demo Company",
+              organization_slug: "demo-company",
+            },
+            organization: {
+              id: 1,
+              name: "Demo Company",
+              slug: "demo-company",
+            },
+          }),
+        };
+      }
+
+      // In a real implementation, you would validate session/token here
+      // For now, return 401 if no demo mode
+      return {
+        statusCode: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({
+          error: "Not authenticated",
+        }),
+      };
+    }
+
+    // Handle auth/logout endpoint
+    if (
+      (event.path === "/auth/logout" ||
+        event.path === "/api/auth/logout" ||
+        event.path === "/.netlify/functions/api/auth/logout") &&
+      event.httpMethod === "POST"
+    ) {
+      return {
+        statusCode: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({
+          success: true,
+          message: "Logged out successfully",
+        }),
+      };
     }
 
     // Handle organization creation

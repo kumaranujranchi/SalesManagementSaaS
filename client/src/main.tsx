@@ -11,6 +11,7 @@ import SuperAdminLogin from './pages/SuperAdminLogin';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import OrgAdminLogin from './pages/OrgAdminLogin';
 import LandingPage from './pages/LandingPage';
+import DatabaseSetup from './pages/DatabaseSetup';
 import './index.css';
 
 // Create a client
@@ -38,6 +39,7 @@ function App() {
       <AuthProvider>
         <Router>
           <Switch>
+            <Route path="/setup" component={DatabaseSetup} />
             <Route path="/login" component={Login} />
             <Route path="/org-admin/login" component={OrgAdminLogin} />
             <Route path="/register" component={RegisterOrganization} />
