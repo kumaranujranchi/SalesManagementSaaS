@@ -1,6 +1,6 @@
 # Sales Management SaaS Platform
 
-A comprehensive multi-tenant SaaS sales management platform converted from Wishluv Buildcon's single-tenant system. This platform supports multiple organizations with complete data isolation, role-based access control, and admin-managed client onboarding.
+A comprehensive multi-tenant SaaS sales management platform is a single-tenant system. This platform supports multiple organizations with complete data isolation, role-based access control, and admin-managed client onboarding.
 
 ## 🚀 Key Features
 
